@@ -4,7 +4,7 @@ import './App.css'
 const cooks = [
   {
     id: 1,
-    name: 'Meera Sharma',
+    name: 'Archana Kumari',
     cuisine: 'North Indian',
     rating: 4.9,
     price: '₹299 / meal',
@@ -73,13 +73,6 @@ const cooks = [
   },
 ]
 
-const user = {
-  name: 'Aisha Khan',
-  email: 'aisha.khan@gmail.com',
-  city: 'Bengaluru',
-  plan: 'Premium Tiffin',
-}
-
 const orderHistory = [
   { id: '#H1942', item: 'Veg Thali', status: 'Delivered', amount: '₹320' },
   { id: '#H1919', item: 'Chicken Curry Bowl', status: 'Preparing', amount: '₹420' },
@@ -87,7 +80,7 @@ const orderHistory = [
 ]
 
 const subscriptions = [
-  { title: 'Weekly Balance', chef: 'Meera Sharma', meals: '5 meals/week', amount: '₹1,450' },
+  { title: 'Weekly Balance', chef: 'Archana Kumari', meals: '5 meals/week', amount: '₹1,450' },
   { title: 'Healthy Lunch Plan', chef: 'Ritika Nair', meals: '10 meals/month', amount: '₹2,400' },
 ]
 
@@ -106,9 +99,12 @@ const adminStats = [
 ]
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false)
+  const [currentUser, setCurrentUser] = useState(null)
   const [currentView, setCurrentView] = useState('welcome')
-  const [loading, setLoading] = useState(false)
+  const [authMode, setAuthMode] = useState(null)
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', city: '' })
+  const [authError, setAuthError] = useState('')
+  const [accounts, setAccounts] = useState([])
   const [toast, setToast] = useState({ visible: false, type: 'success', message: '' })
   const [search, setSearch] = useState('')
   const [mealType, setMealType] = useState('All')
@@ -117,6 +113,10 @@ function App() {
   const [cuisine, setCuisine] = useState('All')
   const [location, setLocation] = useState('All')
   const [selectedCook, setSelectedCook] = useState(cooks[0])
+  const [orders, setOrders] = useState(orderHistory)
+  const [activeSubscriptions, setActiveSubscriptions] = useState(subscriptions)
+  const [menuAvailability, setMenuAvailability] = useState({ 'Paneer Bhurji': true, 'Chicken Curry Bowl': false })
+  const [pendingApprovals, setPendingApprovals] = useState(['Shalini R.', 'Aditya K.'])
 
   useEffect(() => {
     if (!toast.visible) return undefined
@@ -133,7 +133,11 @@ function App() {
       const matchesPlan = mealPlan === 'All' || cook.menu.some((item) => item.plan === mealPlan)
       const matchesCuisine = cuisine === 'All' || cook.cuisine === cuisine
       const matchesLocation = location === 'All' || cook.location === location
-      const matchesPrice = priceRange === 'Any' || priceRange === 'Low' ? true : true
+      const price = Number(cook.price.match(/\d+/)?.[0] ?? 0)
+      const matchesPrice = priceRange === 'Any'
+        || (priceRange === 'Low' && price >= 150 && price <= 250)
+        || (priceRange === 'Mid' && price > 250 && price <= 350)
+        || (priceRange === 'High' && price > 350)
 
       return matchesSearch && matchesType && matchesPlan && matchesCuisine && matchesLocation && matchesPrice
     })
@@ -143,18 +147,71 @@ function App() {
     setToast({ visible: true, type, message })
   }
 
-  const handleLogin = () => {
-    setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
-      setLoggedIn(true)
+  const openAuthForm = (mode) => {
+    setAuthMode(mode)
+    setAuthError('')
+  }
+
+  const handleAuthSubmit = (event) => {
+    event.preventDefault()
+    setAuthError('')
+
+    const email = authForm.email.trim().toLowerCase()
+    if (authMode === 'signup') {
+      if (authForm.password.length < 8) {
+        setAuthError('Password must be at least 8 characters.')
+        return
+      }
+      if (accounts.some((account) => account.email === email)) {
+        setAuthError('An account with this email already exists. Please log in.')
+        return
+      }
+
+      const account = { name: authForm.name.trim(), email, city: authForm.city.trim(), password: authForm.password }
+      setAccounts((items) => [...items, account])
+      setCurrentUser(account)
       setCurrentView('dashboard')
-      showToast('Welcome back, Aisha!')
-    }, 900)
+      setAuthMode(null)
+      showToast(`Welcome to HomeFeast, ${account.name.split(' ')[0]}!`)
+      return
+    }
+
+    const account = accounts.find((item) => item.email === email && item.password === authForm.password)
+    if (!account) {
+      setAuthError('Email or password is incorrect. Create an account first if you are new.')
+      return
+    }
+
+    setCurrentUser(account)
+    setCurrentView('dashboard')
+    setAuthMode(null)
+    showToast(`Welcome back, ${account.name.split(' ')[0]}!`)
   }
 
   const handleSubscribe = (cookName) => {
-    showToast(`Subscribed to ${cookName} successfully`, 'success')
+    setActiveSubscriptions((items) => [
+      { title: `${cookName} meal plan`, chef: cookName, meals: '5 meals/week', amount: '₹1,450' },
+      ...items,
+    ])
+    setCurrentView('subscriptions')
+    showToast(`Added a meal plan with ${cookName}`)
+  }
+
+  const handleAddOrder = (dish, cookName) => {
+    setOrders((items) => [
+      { id: `#H${Date.now().toString().slice(-5)}`, item: `${dish.name} · ${cookName}`, status: 'Preparing', amount: dish.price },
+      ...items,
+    ])
+    setCurrentView('orders')
+    showToast(`${dish.name} added to your orders`)
+  }
+
+  const handleLogout = () => {
+    setCurrentUser(null)
+    setCurrentView('welcome')
+    setAuthForm({ name: '', email: '', password: '', city: '' })
+    setAuthMode('login')
+    showToast('You have been logged out')
   }
 
   const handleOrderAction = (action) => {
@@ -180,10 +237,33 @@ function App() {
           <p className="lead">
             Discover trusted home cooks, flexible tiffin subscriptions, and nourishing food designed around your schedule.
           </p>
-          <div className="welcome-actions">
-            <button type="button" className="action-btn primary" onClick={handleLogin}>Login</button>
-            <button type="button" className="action-btn secondary">Sign Up</button>
-          </div>
+          {authMode ? (
+            <form className="auth-form" onSubmit={handleAuthSubmit}>
+              <h2>{authMode === 'login' ? 'Log in' : 'Create your account'}</h2>
+              {authMode === 'signup' && (
+                <>
+                  <label htmlFor="auth-name">Name</label>
+                  <input id="auth-name" autoComplete="name" required value={authForm.name} onChange={(event) => setAuthForm({ ...authForm, name: event.target.value })} />
+                  <label htmlFor="auth-city">City</label>
+                  <input id="auth-city" autoComplete="address-level2" required value={authForm.city} onChange={(event) => setAuthForm({ ...authForm, city: event.target.value })} />
+                </>
+              )}
+              <label htmlFor="auth-email">Email</label>
+              <input id="auth-email" type="email" autoComplete="email" required value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} />
+              <label htmlFor="auth-password">Password</label>
+              <input id="auth-password" type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} required value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} />
+              {authError && <p className="auth-error" role="alert">{authError}</p>}
+              <button type="submit" className="action-btn primary full">{authMode === 'login' ? 'Login' : 'Create account'}</button>
+              <button type="button" className="auth-switch" onClick={() => openAuthForm(authMode === 'login' ? 'signup' : 'login')}>
+                {authMode === 'login' ? 'New here? Sign up' : 'Already have an account? Log in'}
+              </button>
+            </form>
+          ) : (
+            <div className="welcome-actions">
+              <button type="button" className="action-btn primary" onClick={() => openAuthForm('login')}>Login</button>
+              <button type="button" className="action-btn secondary" onClick={() => openAuthForm('signup')}>Sign Up</button>
+            </div>
+          )}
           <div className="mini-stats">
             <div>
               <strong>2.3K+</strong>
@@ -227,11 +307,7 @@ function App() {
         <div className="header-row">
           <div>
             <p className="eyebrow">Good morning</p>
-            <h2>Hello, {user.name.split(' ')[0]}!</h2>
-          </div>
-          <div className="header-actions">
-            <button type="button" className="action-btn secondary" onClick={() => setCurrentView('cook-dashboard')}>Cook View</button>
-            <button type="button" className="action-btn secondary" onClick={() => setCurrentView('admin-dashboard')}>Admin</button>
+            <h2>Hello, {currentUser.name.split(' ')[0]}!</h2>
           </div>
         </div>
 
@@ -276,15 +352,8 @@ function App() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="skeleton-grid">
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
-          <div className="skeleton-card" />
-        </div>
-      ) : (
-        <div className="cook-grid">
-          {filteredCooks.map((cookItem) => (
+      <div className="cook-grid">
+        {filteredCooks.map((cookItem) => (
             <article key={cookItem.id} className="cook-card">
               <img src={cookItem.image} alt={cookItem.name} />
               <div className="cook-card-body">
@@ -316,9 +385,8 @@ function App() {
                 </button>
               </div>
             </article>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </>
   )
 
@@ -364,7 +432,7 @@ function App() {
                   <strong>{dish.price}</strong>
                 </div>
               </div>
-              <button type="button" className="action-btn primary small" onClick={() => handleSubscribe(selectedCook.name)}>Add</button>
+              <button type="button" className="action-btn primary small" onClick={() => handleAddOrder(dish, selectedCook.name)}>Add</button>
             </div>
           ))}
         </div>
@@ -391,10 +459,10 @@ function App() {
     <div className="page-panel">
       <div className="section-header">
         <h2>Orders</h2>
-        <button type="button" className="action-btn secondary small">Track</button>
+        <button type="button" className="action-btn secondary small" onClick={() => showToast(orders[0] ? `${orders[0].id}: ${orders[0].status}` : 'No orders to track', 'success')}>Track latest</button>
       </div>
       <div className="list-stack">
-        {orderHistory.map((order) => (
+        {orders.map((order) => (
           <div key={order.id} className="list-item">
             <div>
               <strong>{order.item}</strong>
@@ -414,11 +482,11 @@ function App() {
     <div className="page-panel">
       <div className="section-header">
         <h2>Subscriptions</h2>
-        <button type="button" className="action-btn secondary small">Manage</button>
+        <button type="button" className="action-btn secondary small" onClick={() => showToast(`${activeSubscriptions.length} active subscription${activeSubscriptions.length === 1 ? '' : 's'}`)}>Manage</button>
       </div>
       <div className="subscription-list">
-        {subscriptions.map((plan) => (
-          <div key={plan.title} className="subscription-card">
+        {activeSubscriptions.map((plan, index) => (
+          <div key={`${plan.title}-${index}`} className="subscription-card">
             <div>
               <h3>{plan.title}</h3>
               <p>{plan.chef}</p>
@@ -427,6 +495,10 @@ function App() {
               <span>{plan.meals}</span>
               <strong>{plan.amount}</strong>
             </div>
+            <button type="button" className="action-btn secondary small" onClick={() => {
+              setActiveSubscriptions((items) => items.filter((_, itemIndex) => itemIndex !== index))
+              showToast('Subscription cancelled')
+            }}>Cancel</button>
           </div>
         ))}
       </div>
@@ -438,21 +510,21 @@ function App() {
       <div className="profile-head">
         <div className="avatar">AK</div>
         <div>
-          <h2>{user.name}</h2>
-          <p>{user.email}</p>
+          <h2>{currentUser.name}</h2>
+          <p>{currentUser.email}</p>
         </div>
       </div>
       <div className="profile-info">
         <div>
           <span>City</span>
-          <strong>{user.city}</strong>
+          <strong>{currentUser.city}</strong>
         </div>
         <div>
           <span>Current plan</span>
-          <strong>{user.plan}</strong>
+          <strong>Customer</strong>
         </div>
       </div>
-      <button type="button" className="action-btn primary full" onClick={() => setLoggedIn(false)}>Logout</button>
+      <button type="button" className="action-btn primary full" onClick={handleLogout}>Logout</button>
     </div>
   )
 
@@ -478,11 +550,11 @@ function App() {
           <h3>Menu management</h3>
           <div className="menu-row">
             <span>Paneer Bhurji</span>
-            <button type="button" className="toggle on">Available</button>
+            <button type="button" className={`toggle ${menuAvailability['Paneer Bhurji'] ? 'on' : 'off'}`} onClick={() => setMenuAvailability((items) => ({ ...items, 'Paneer Bhurji': !items['Paneer Bhurji'] }))}>{menuAvailability['Paneer Bhurji'] ? 'Available' : 'Paused'}</button>
           </div>
           <div className="menu-row">
             <span>Chicken Curry Bowl</span>
-            <button type="button" className="toggle off">Paused</button>
+            <button type="button" className={`toggle ${menuAvailability['Chicken Curry Bowl'] ? 'on' : 'off'}`} onClick={() => setMenuAvailability((items) => ({ ...items, 'Chicken Curry Bowl': !items['Chicken Curry Bowl'] }))}>{menuAvailability['Chicken Curry Bowl'] ? 'Available' : 'Paused'}</button>
           </div>
         </div>
 
@@ -521,20 +593,18 @@ function App() {
       <div className="admin-grid">
         <div className="dashboard-box">
           <h3>Pending cook approvals</h3>
-          <div className="request-item">
-            <div>
-              <strong>Shalini R.</strong>
-              <p>North Indian home kitchen</p>
+          {pendingApprovals.map((name) => (
+            <div className="request-item" key={name}>
+              <div>
+                <strong>{name}</strong>
+                <p>Cook application pending review</p>
+              </div>
+              <button type="button" className="action-btn primary small" onClick={() => {
+                setPendingApprovals((items) => items.filter((item) => item !== name))
+                showToast(`${name} approved`)
+              }}>Approve</button>
             </div>
-            <button type="button" className="action-btn primary small">Approve</button>
-          </div>
-          <div className="request-item">
-            <div>
-              <strong>Aditya K.</strong>
-              <p>Healthy meal prep</p>
-            </div>
-            <button type="button" className="action-btn primary small">Approve</button>
-          </div>
+          ))}
         </div>
 
         <div className="dashboard-box">
@@ -562,7 +632,7 @@ function App() {
     <div className="app-shell">
       {toast.visible && <div className={`toast ${toast.type}`}>{toast.message}</div>}
 
-      {!loggedIn ? (
+      {!currentUser ? (
         renderWelcomeScreen()
       ) : (
         <>
@@ -573,7 +643,7 @@ function App() {
                 <strong>HomeFeast</strong>
               </div>
             </div>
-            <button type="button" className="avatar-button" onClick={() => setCurrentView('profile')}>AK</button>
+            <button type="button" className="avatar-button" aria-label="Open profile" onClick={() => setCurrentView('profile')}>{currentUser.name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</button>
           </header>
 
           <main className="app-main">
